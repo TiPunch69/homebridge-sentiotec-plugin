@@ -1,16 +1,16 @@
 {
   "private": true,
-  "displayName": "Plugin Name",
-  "name": "homebridge-plugin-name",
+  "displayName": "Homebridge Sentiotec Plugin",
+  "name": "homebridge-sentiotec-plugin",
   "version": "1.0.0",
-  "description": "A short description about what your plugin does.",
+  "description": "A plugin to connect a Sentiotec Sauna to the hombridge project and eventually to Apple Homekit",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git://github.com/USERNAME/GITHUB_PROJECT_NAME.git"
+    "url": "https://github.com/TiPunch69/homebridge-sentiotec-plugin.git"
   },
   "bugs": {
-    "url": "https://github.com/USERNAME/GITHUB_PROJECT_NAME/issues"
+    "url": "https://github.com/TiPunch69/homebridge-sentiotec-plugin/issues"
   },
   "engines": {
     "node": ">=10.17.0",
