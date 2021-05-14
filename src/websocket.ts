@@ -1,4 +1,4 @@
-import WebSocket from "ws";
+import WebSocket, { ErrorEvent } from "ws";
 import {Md5} from 'ts-md5/dist/md5';
 import {CharacteristicGetCallback, Logger, HAPStatus} from 'homebridge';
 
@@ -39,10 +39,12 @@ export class SentiotecAPI {
      * @param serial the serial number of the gateway
      */
     constructor(ip: string, password: string, serial: string, log: Logger) {
+        // the needed security headers
         const headers = {
-            // add additional headers here
+            "Origin": "http://192.168.1.1",
             "Sec-WebSocket-Extensions": "permessage-deflate; client_max_window_bits",
-            "Sec-WebSocket-Key": ""
+            "Sec-WebSocket-Key": "kvNqQ/cAxjEHzHhjdS3Ayw==",
+            "Sec-WebSocket-Version": "13"
         } 
         var url:string = "ws://" + ip + ":17001" + "/" + serial;
         this.passwdMD5 = Md5.hashStr(password, false) as string;
@@ -50,6 +52,9 @@ export class SentiotecAPI {
         this.log = log;
         this.webSocket = new WebSocket(url, { headers});
         this.webSocket.on("message", this.messageReceieved.bind(this));
+        this.webSocket.onerror = function(error) {
+            log.error("Error on websocket: " + error));
+        }
         // charakteristka initialisieren
         Object.keys(this.values).forEach((key) => { this.values[key]= "" });
         // update the data in case it is older than X seconds
