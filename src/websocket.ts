@@ -12,6 +12,12 @@ export enum PRONET_CHARACTERISTIC{
     SoftwareVersion = "183/0/21",
     ConnectionStatus = "183/0/22"
 }
+/**
+ * The interface for a hash.
+ */
+export interface Hash {
+    [indexer: string] : string
+}
 
 /**
  * This class is the API via websocket to the Pronet web gateway.
@@ -23,12 +29,8 @@ export class SentiotecAPI {
     private webSocket: WebSocket;
     // indicates that the websocket is open
     private webSocketOpen: boolean = false;
-    // indicates if a data update is needed before returning a get value
-    private dataUpdateNeeded: boolean = true;
-    // the call back function in case of any parameter queries or settings
-    private getCallback: CharacteristicGetCallback | null = null;
     // the list of cached values, so it you do not have to poll all the time
-    private values[];
+    private values: Hash = {};
 
     /**
      * the constructor
@@ -48,8 +50,10 @@ export class SentiotecAPI {
         this.log = log;
         this.webSocket = new WebSocket(url, { headers});
         this.webSocket.on("message", this.messageReceieved.bind(this));
+        // charakteristka initialisieren
+        Object.keys(this.values).forEach((key) => { this.values[key]= "" });
         // update the data in case it is older than X seconds
-        setInterval(() => this.dataUpdateNeeded, 30000);
+        setInterval(() => this.updateCharacteristics(), 10000);
         this.log.info("Connected to Pronet instance via " + url);
     }
     /**
@@ -74,6 +78,8 @@ export class SentiotecAPI {
                 if (pronetMessage.value=="true") {
                     this.log.debug("Authentication successful");
                     this.webSocketOpen = true;
+                    // initially update the characteristics
+                    this.updateCharacteristics();
                 } else {
                     this.log.debug("Authentication unsuccessful, terminating websocket.");
                     this.webSocket.close();
@@ -96,16 +102,20 @@ export class SentiotecAPI {
             this.log.error("Websocket is not open");
             callback(HAPStatus.NOT_ALLOWED_IN_CURRENT_STATE, null);
         }
-        if (!this.dataUpdateNeeded){
-            // data is chached
-            this.log.debug("Data for characteristic " + PRONET_CHARACTERISTIC + " is cached, returning it");
-            callback(HAPStatus.SUCCESS, this.values[characteristic]);
+        // data is chached
+        this.log.debug("Returnning data for characteristic " + PRONET_CHARACTERISTIC);
+        callback(HAPStatus.SUCCESS, this.values[characteristic]);  
+    }
+    /**
+     * Diese Funktion aktualisiert alle Eigenschaften.
+     */
+    private updateCharacteristics(): void{
+        if (!this.webSocketOpen){
+            return;
         }
-        // send an update request and the request is handled once the udpate is complete
-        this.getCallback = callback;
+        this.log.debug("Aktualisiere Eigenschaften");
         const query = {
             "cmd": "cmd_request_update_all",
-            "addr": characteristic.toString()
         } 
         this.webSocket.send(JSON.stringify(query));
     }
