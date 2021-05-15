@@ -43,7 +43,7 @@ export class SentiotecAPI {
         const headers = {
             "Origin": "http://192.168.1.1",
             "Sec-WebSocket-Extensions": "permessage-deflate; client_max_window_bits",
-            "Sec-WebSocket-Key": "kvNqQ/cAxjEHzHhjdS3Ayw==",
+            //"Sec-WebSocket-Key": "kvNqQ/cAxjEHzHhjdS3Ayw==",
             "Sec-WebSocket-Version": "13"
         } 
         var url:string = "ws://" + ip + ":17001" + "/" + serial;
@@ -53,12 +53,12 @@ export class SentiotecAPI {
         this.webSocket = new WebSocket(url, { headers});
         this.webSocket.on("message", this.messageReceieved.bind(this));
         this.webSocket.onerror = function(error) {
-            log.error("Error on websocket: " + error);
+            log.error("Error on websocket: " + error.message);
         }
         // charakteristka initialisieren
         Object.keys(this.values).forEach((key) => { this.values[key]= "" });
         // update the data in case it is older than X seconds
-        setInterval(() => this.updateCharacteristics(), 10000);
+        //setInterval(() => this.updateCharacteristics(), 10000);
         this.log.info("Connected to Pronet instance via " + url);
     }
     /**
@@ -66,8 +66,8 @@ export class SentiotecAPI {
      * @param message the message form the websocket connection
      */
     private messageReceieved(message) : void {
-        this.log.debug("Message received: " + message.data);
-        var pronetMessage = JSON.parse(message.data);
+        var pronetMessage = JSON.parse(message);
+        this.log.info("> Pronet message received: " + message);
         switch(pronetMessage.cmd){
             case "cmd_on_accept":
                 var authenticationObject = {
@@ -76,22 +76,24 @@ export class SentiotecAPI {
                     "user":			"root",
                     "passwd":		this.passwdMD5
                 }
+                this.log.info("Initial confirmation received, sending authentication details");
                 this.webSocket.send(JSON.stringify(authenticationObject));
-                this.log.debug("Sent authentication details");
                 break;
             case "cmd_auth_response":
                 if (pronetMessage.value=="true") {
-                    this.log.debug("Authentication successful");
+                    this.log.info("Authentication successful");
                     this.webSocketOpen = true;
+                    this.requestCharacteristic();
                     // initially update the characteristics
-                    this.updateCharacteristics();
+                    //this.updateCharacteristics();
                 } else {
-                    this.log.debug("Authentication unsuccessful, terminating websocket.");
+                    this.log.info("Authentication unsuccessful, terminating websocket.");
                     this.webSocket.close();
                     this.webSocketOpen = false;
                 }
                 break;
             case "cmd_knx_write":
+                this.log.info("Information message received: " + message);
                 for (const value in Object.keys(PRONET_CHARACTERISTIC)) {
                     if (pronetMessage.addr === PRONET_CHARACTERISTIC[value]){
                         // store the characteristic in a hashmap for later use
@@ -111,6 +113,15 @@ export class SentiotecAPI {
         this.log.debug("Returnning data for characteristic " + PRONET_CHARACTERISTIC);
         callback(HAPStatus.SUCCESS, this.values[characteristic]);  
     }
+    private requestCharacteristic(): void {
+        this.log.info("Requesting update of one characteristic");
+        const cmd = {
+            "cmd" : "cmd_request_update",
+            "addr":"183/0/0"
+        }
+        this.webSocket.send(JSON.stringify(cmd));
+    }
+
     /**
      * Diese Funktion aktualisiert alle Eigenschaften.
      */
@@ -121,6 +132,7 @@ export class SentiotecAPI {
         this.log.debug("Aktualisiere Eigenschaften");
         const query = {
             "cmd": "cmd_request_update_all",
+            "start": "true"
         } 
         this.webSocket.send(JSON.stringify(query));
     }

@@ -10,6 +10,8 @@ import {
   Logging,
   Service
 } from "homebridge";
+import { SentiotecAPI } from './websocket';
+
 
 /**
  * Configuration schema https://developers.homebridge.io/#/config-schema
@@ -59,6 +61,9 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
   private readonly informationService: Service;
 
   constructor(log: Logging, config: AccessoryConfig, api: API) {
+
+    const sentioAPI = new SentiotecAPI(config.ip, config.password, config.serial, log);
+
     this.log = log;
     this.name = config.name;
 

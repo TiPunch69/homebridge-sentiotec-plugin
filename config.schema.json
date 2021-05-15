@@ -11,14 +11,12 @@
                 "title": "Name",
                 "type": "string",
                 "required": true,
-                "pattern": "^[0-9]$",
                 "default": "Sauna"
             },
             "serial": {
                 "title": "Pronet Serial",
                 "type": "string",
-                "required": true,
-                "pattern": "^[0-9]$"
+                "required": true
             },
             "ip": {
                 "title": "Pronet IP",
