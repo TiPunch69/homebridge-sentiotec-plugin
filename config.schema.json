@@ -1,16 +1,38 @@
 {
-  "pluginAlias": "ExampleHomebridgePlugin",
-  "pluginType": "platform",
-  "singular": true,
-  "schema": {
-    "type": "object",
-    "properties": {
-      "name": {
-        "title": "Name",
-        "type": "string",
-        "required": true,
-        "default": "Example Dynamic Platform"
-      }
+    "pluginAlias": "Sentiotec Sauna Control Plugin",
+    "pluginType": "accessory",
+    "headerDisplay": "Homebridge plugin for a Sentiotec Sauna control using Pronet",
+    "footerDisplay": "Rudolf-Michael Liebhart, May 2021",
+    "singular": true,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "name": {
+                "title": "Name",
+                "type": "string",
+                "required": true,
+                "pattern": "^[0-9]$",
+                "default": "Sauna"
+            },
+            "serial": {
+                "title": "Pronet Serial",
+                "type": "string",
+                "required": true,
+                "pattern": "^[0-9]$"
+            },
+            "ip": {
+                "title": "Pronet IP",
+                "type": "string",
+                "required": true,
+                "format": "ipv4",
+                "default": "192.168.1.2"
+            },
+            "password": {
+                "title": "Sauna Password",
+                "type": "string",
+                "required": true,
+                "default": "sentiotec"
+              }
+        }
     }
-  }
 }

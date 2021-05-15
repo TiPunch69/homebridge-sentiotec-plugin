@@ -11,6 +11,10 @@ import {
   Service
 } from "homebridge";
 
+/**
+ * Configuration schema https://developers.homebridge.io/#/config-schema
+ */
+
 /*
  * IMPORTANT NOTICE
  *
@@ -69,30 +73,31 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
         /*
         TODO: get the current temperature from the API
         */
-        callback(undefined, 23);
+        callback(undefined, 100);
       });
     // target temperature
     this.temperaturService.getCharacteristic(hap.Characteristic.TargetTemperature)
       .on(CharacteristicEventTypes.GET, (callback: CharacteristicGetCallback) => {
-        log.info("Getting sauna temperature");
-        // implement
-        callback(undefined, this.saunaOn);
+        log.info("Getting sauna target temperature");
+        /*
+        TODO: get the target temperature from the API
+        */
+        callback(undefined, 10);
       })
       .on(CharacteristicEventTypes.SET, (value: CharacteristicValue, callback: CharacteristicSetCallback) => {
-        this.saunaOn = value as boolean;
-        log.info("Switching sauna to " + (this.saunaOn? "ON": "OFF"));
+        log.info("Setting the sauna target temperature to " + value);
         callback();
       });
     // temperature units
     this.temperaturService.getCharacteristic(hap.Characteristic.TemperatureDisplayUnits)
     .on(CharacteristicEventTypes.GET, (callback: CharacteristicGetCallback) => {
-      log.info("Getting sauna temperature");
+      log.info("Getting sauna temperature units");
       // implement
-      callback(undefined, this.saunaOn);
+      callback(undefined, hap.Characteristic.TemperatureDisplayUnits.CELSIUS);
     })
     .on(CharacteristicEventTypes.SET, (value: CharacteristicValue, callback: CharacteristicSetCallback) => {
-      this.saunaOn = value as boolean;
-      log.info("Switching sauna to " + (this.saunaOn? "ON": "OFF"));
+
+      log.info("Getting sauna temperature units to " + value.toString());
       callback();
     });
 
@@ -103,7 +108,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
     })
     this.temperaturService.getCharacteristic(hap.Characteristic.TargetHeatingCoolingState)
     .on(CharacteristicEventTypes.GET, (callback: CharacteristicGetCallback) => {
-      callback(undefined, hap.Characteristic.CurrentHeatingCoolingState.HEAT);
+      callback(undefined, hap.Characteristic.TargetHeatingCoolingState.HEAT);
     })
 
     this.informationService = new hap.Service.AccessoryInformation()
@@ -114,7 +119,8 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
        TODO: get this value from the information query
        */
       .setCharacteristic(hap.Characteristic.FirmwareRevision, "B2 Something")
-      .setCharacteristic(hap.Characteristic.SerialNumber, "12345");
+      .setCharacteristic(hap.Characteristic.SerialNumber, "12345")
+      .setCharacteristic(hap.Characteristic.ProductData, "Some Product Information with some additional info");
     log.info("Sauna finished initializing");
   }
   /*

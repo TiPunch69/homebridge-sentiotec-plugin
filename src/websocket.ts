@@ -53,7 +53,7 @@ export class SentiotecAPI {
         this.webSocket = new WebSocket(url, { headers});
         this.webSocket.on("message", this.messageReceieved.bind(this));
         this.webSocket.onerror = function(error) {
-            log.error("Error on websocket: " + error));
+            log.error("Error on websocket: " + error);
         }
         // charakteristka initialisieren
         Object.keys(this.values).forEach((key) => { this.values[key]= "" });
