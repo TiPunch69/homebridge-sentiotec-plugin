@@ -1,44 +1,55 @@
 import WebSocket, { ErrorEvent } from "ws";
 import {Md5} from 'ts-md5/dist/md5';
 import {CharacteristicGetCallback, Logger, HAPStatus} from 'homebridge';
+import { timeStamp } from "node:console";
+import { setTimestampEnabled } from "homebridge/lib/logger";
 
 /**
- * the IDs of the different parameters (currently only supported for the first Sauna connected)
+ * the timeout for an authentication request
  */
-export enum PRONET_CHARACTERISTIC{
-    CurrentTemperature = "183/0/11",
-    TargetTemperature = "183/0/2",
-    Status = "183/0/1",
-    SoftwareVersion = "183/0/21",
-    ConnectionStatus = "183/0/22"
-}
+const AUTENTICATION_TIMEOUT:number = 5000;
 /**
- * The interface for a hash.
+ *  the timeout to get all the updated data from prnoet
  */
-export interface Hash {
-    [indexer: string] : string
-}
+const REFRESH_TIMEOUT:number = 5000;
+/**
+ * the timeout for which the data is valid and does not need to be refreshed
+ */
+const DATA_VALID_TIMEOUT: number = 30000;
 
 /**
  * This class is the API via websocket to the Pronet web gateway.
  */
 export class SentiotecAPI {
-    private serial: string;
-    private passwdMD5: string;
+    /**
+     * the logger that should be used
+     */
     private log: Logger;
-    private webSocket: WebSocket;
-    // indicates that the websocket is open
-    private webSocketOpen: boolean = false;
-    // the list of cached values, so it you do not have to poll all the time
-    private values: Hash = {};
-
+    /**
+     * the map of cached values
+     */
+    private cachedValues: Map<string, string> = new Map();
+    /**
+     * indicates that a data update is needed
+     */
+    private dataExpired: boolean = true;
     /**
      * the constructor
+     * @param log the logger to be used
+     */
+    constructor(log: Logger) {
+        this.log = log;
+    }
+
+    /**
+     * This function creates a new websocket and authenticates the user based on the information given in the constructor
      * @param ip the IP of the pronet gatway
      * @param password the password for login
      * @param serial the serial number of the gateway
+     * @param log the logger to output status messages
+     * @returns a Promise with the created and authenticated websocket
      */
-    constructor(ip: string, password: string, serial: string, log: Logger) {
+    private connect(ip: string, password: string, serial: string, log: Logger) : Promise<WebSocket>{
         // the needed security headers
         const headers = {
             "Origin": "http://192.168.1.1",
@@ -46,94 +57,156 @@ export class SentiotecAPI {
             //"Sec-WebSocket-Key": "kvNqQ/cAxjEHzHhjdS3Ayw==",
             "Sec-WebSocket-Version": "13"
         } 
-        var url:string = "ws://" + ip + ":17001" + "/" + serial;
-        this.passwdMD5 = Md5.hashStr(password, false) as string;
-        this.serial = serial;
-        this.log = log;
-        this.webSocket = new WebSocket(url, { headers});
-        this.webSocket.on("message", this.messageReceieved.bind(this));
-        this.webSocket.onerror = function(error) {
-            log.error("Error on websocket: " + error.message);
-        }
-        // charakteristka initialisieren
-        Object.keys(this.values).forEach((key) => { this.values[key]= "" });
-        // update the data in case it is older than X seconds
-        //setInterval(() => this.updateCharacteristics(), 10000);
-        this.log.info("Connected to Pronet instance via " + url);
+        const passwdMD5:string = Md5.hashStr(password, false) as string;
+        const url:string = "ws://" + ip + ":17001" + "/" + serial;
+
+        // create a connection and authenticate in the form of a promise
+        return new Promise((resolve, reject) => {
+            // set an inital timeout for the whole autentication request
+            var timeout: NodeJS.Timeout = setTimeout(() => {
+                websocket.close();
+                reject(new Error("Authentication timed out"));
+            },5000);
+            var websocket = new WebSocket(url, { headers});
+            websocket.onmessage = (message) => {
+                var pronetMessage = JSON.parse(message.data.toString());
+                switch(pronetMessage.cmd){
+                    case "cmd_on_accept":
+                        // step1: connection accepted
+                        var authenticationObject = {
+                            "cmd":			"cmd_request_auth",
+                            "sn":			serial,
+                            "user":			"root",
+                            "passwd":		passwdMD5
+                        }
+                        log.info("Initial connection confirmation received, sending authentication details");
+                        websocket.send(JSON.stringify(authenticationObject));
+                        break;
+                    case "cmd_auth_response":
+                        // setp2: authentication
+                        if (pronetMessage.value=="true") {
+                            log.info("Authentication successful");
+                            clearTimeout(timeout);
+                            resolve(websocket);
+                        } else {
+                            log.info("Authentication unsuccessful, terminating websocket.");
+                            clearTimeout(timeout);
+                            websocket.close();
+                            reject(new Error("Authentication unsuccessful"))
+                        }
+                        break;
+                }
+            };
+            websocket.onerror = (error) => {
+                clearTimeout(timeout);
+                websocket.close();
+                reject(error);
+            };
+        });
     }
     /**
-     * This function is called in case a message is received from the websocket
-     * @param message the message form the websocket connection
+     * This function refreshes all characteristics.
+     * @param websocket the open websocket
+     * @param log the logger to output status messages
+     * @returns a Promise that after all have been refreshed
      */
-    private messageReceieved(message) : void {
-        var pronetMessage = JSON.parse(message);
-        this.log.info("> Pronet message received: " + message);
-        switch(pronetMessage.cmd){
-            case "cmd_on_accept":
-                var authenticationObject = {
-                    "cmd":			"cmd_request_auth",
-                    "sn":			this.serial,
-                    "user":			"root",
-                    "passwd":		this.passwdMD5
+    private refreshCharacteristics(websocket: WebSocket, log: Logger): Promise<Map<string, string>>{
+        // the map of values
+        var values: Map<string, string> = new Map();
+       
+        return new Promise((resolve, reject) => {
+            // set an inital timeout for the whole  request
+            var timeout: NodeJS.Timeout = setTimeout(function() {
+                websocket.close();
+                reject(new Error("Refresh of values failed due to timeout"));
+            }, REFRESH_TIMEOUT);
+            websocket.onmessage = websocket.onmessage = (message) => {
+                var pronetMessage = JSON.parse(message.data.toString());
+                switch(pronetMessage.cmd){
+                    case "cmd_knx_write":
+                        log.info("Information message received: " + message.data.toString());
+                        values.set(pronetMessage.addr, pronetMessage.value);                    
+                        if (pronetMessage.addr == "183/1/47"){
+                            // all finished, as last dataset was reached
+                            clearTimeout(timeout);
+                            // set the expiration timeout of the data and close the websocket
+                            this.dataExpired = false;
+                            setTimeout(() => {
+                                this.dataExpired = true;
+                            }, DATA_VALID_TIMEOUT);
+                            websocket.close();
+                            resolve(values);
+                        }
+                        break;
                 }
-                this.log.info("Initial confirmation received, sending authentication details");
-                this.webSocket.send(JSON.stringify(authenticationObject));
-                break;
-            case "cmd_auth_response":
-                if (pronetMessage.value=="true") {
-                    this.log.info("Authentication successful");
-                    this.webSocketOpen = true;
-                    this.requestCharacteristic();
-                    // initially update the characteristics
-                    //this.updateCharacteristics();
-                } else {
-                    this.log.info("Authentication unsuccessful, terminating websocket.");
-                    this.webSocket.close();
-                    this.webSocketOpen = false;
-                }
-                break;
-            case "cmd_knx_write":
-                this.log.info("Information message received: " + message);
-                for (const value in Object.keys(PRONET_CHARACTERISTIC)) {
-                    if (pronetMessage.addr === PRONET_CHARACTERISTIC[value]){
-                        // store the characteristic in a hashmap for later use
-                        this.values[pronetMessage.addr] = pronetMessage.value;
-                    }
-                }
-        }
+            }
+            websocket.onerror = (error) => {
+                clearTimeout(timeout);
+                websocket.close();
+                reject(error);
+            };
+            // send a request for all characteristics
+            const query = {
+                "cmd": "cmd_request_update_all",
+                "start": "true"
+            } 
+            websocket.send(JSON.stringify(query));
+        });
     }
-
-    getCharacteristic(callback: CharacteristicGetCallback, characteristic: PRONET_CHARACTERISTIC) : void{
-        if (!this.webSocketOpen){
-            // websocket is not open
-            this.log.error("Websocket is not open");
-            callback(HAPStatus.NOT_ALLOWED_IN_CURRENT_STATE, null);
-        }
-        // data is chached
-        this.log.debug("Returnning data for characteristic " + PRONET_CHARACTERISTIC);
-        callback(HAPStatus.SUCCESS, this.values[characteristic]);  
-    }
-    private requestCharacteristic(): void {
-        this.log.info("Requesting update of one characteristic");
-        const cmd = {
-            "cmd" : "cmd_request_update",
-            "addr":"183/0/0"
-        }
-        this.webSocket.send(JSON.stringify(cmd));
-    }
-
     /**
-     * Diese Funktion aktualisiert alle Eigenschaften.
+     * 
+     * @param saunaID the ID of the sauna (either 0 for Sauna 1 oder 1 for Sauna 2)
+     * @param characteristicID the ID of the characteristic. Currently supported characteristics are:
+     * Current temperature: 183/0/11
+     * Target temperature: 183/0/2
+     * Status: 183/0/1
+     * Software Version: 183/0/21
+     * ConnectionStatus: 183/0/22
+     * @returns the value
      */
-    private updateCharacteristics(): void{
-        if (!this.webSocketOpen){
-            return;
+    public getCharacteristic(saunaID:number, characteristicID:number, ip: string, password: string, serial: string, log: Logger): Promise<string>{
+        return new Promise((resolve, reject) => {
+            if (this.dataExpired){
+                // check if a session is alreay in progress
+                if (!this.dataUpdateInProgress) {
+                    // no update in progress, so initiate one
+                    log.info("Data is expired, initiating characteristic refresh")
+                    this.connect(ip, password, serial, log)
+                        .catch((error) => reject(error))
+                        .then((websocket) => {
+                            this.refreshCharacteristics(websocket as WebSocket, log)
+                                .catch((error) => reject(error))
+                                .then((values) => {
+                                    this.cachedValues = values as Map<string, string>
+                                })
+                        });  
+                }
+                else {
+                    log.info("Characteristic refresh is in progress, delay the request");
+                    setTimeout(() => {
+                        resolve(this.getCachedCharacteristic(saunaID, characteristicID));
+
+                    }, REFRESH_TIMEOUT/4);
+                }
+            }
+            else {
+                log.info("Data is still valid, fetching needed values");
+                resolve(this.getCachedCharacteristic(saunaID, characteristicID));
+            }
+        });
+    }
+    /**
+     * This function fetches a characteristic from cached map. In case it does not exist an empty string is returned.
+     * @param saunaID the ID of the sauna
+     * @param characteristicID the ID of the characteristic. 
+     */
+    private getCachedCharacteristic(saunaID:number, characteristicID:number): string{
+        const characteristicString: string = "183/" + saunaID + "/" + characteristicID;
+        if (this.cachedValues.has(characteristicString)){
+            return this.cachedValues.get(characteristicString) as string;
         }
-        this.log.debug("Aktualisiere Eigenschaften");
-        const query = {
-            "cmd": "cmd_request_update_all",
-            "start": "true"
-        } 
-        this.webSocket.send(JSON.stringify(query));
+        else {
+            return "";
+        }
     }
 }

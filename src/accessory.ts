@@ -62,7 +62,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
 
   constructor(log: Logging, config: AccessoryConfig, api: API) {
 
-    const sentioAPI = new SentiotecAPI(config.ip, config.password, config.serial, log);
+    const sentioAPI = new SentiotecAPI(log);
 
     this.log = log;
     this.name = config.name;
@@ -74,7 +74,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
     // current temperature
     this.temperaturService.getCharacteristic(hap.Characteristic.CurrentTemperature)
       .on(CharacteristicEventTypes.GET, (callback: CharacteristicGetCallback) => {
-        log.info("Getting sauna temperature");
+        log.info("Getting current sauna temperature");
         /*
         TODO: get the current temperature from the API
         */
