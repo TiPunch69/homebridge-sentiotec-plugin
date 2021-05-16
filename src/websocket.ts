@@ -2,7 +2,6 @@ import WebSocket, { ErrorEvent } from "ws";
 import {Md5} from 'ts-md5/dist/md5';
 import {CharacteristicGetCallback, Logger, HAPStatus} from 'homebridge';
 import { timeStamp } from "node:console";
-import { setTimestampEnabled } from "homebridge/lib/logger";
 
 /**
  * the timeout for an authentication request
