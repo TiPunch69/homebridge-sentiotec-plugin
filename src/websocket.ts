@@ -34,6 +34,10 @@ export class SentiotecAPI {
      */
     private dataExpired: boolean = true;
     /**
+     * indicates that a data refresh is currently in progress
+     */
+    private dataUpdateInProgress: boolean = false;
+    /**
      * the constructor
      * @param log the logger to be used
      */
@@ -165,19 +169,22 @@ export class SentiotecAPI {
      * @returns the value
      */
     public getCharacteristic(saunaID:number, characteristicID:number, ip: string, password: string, serial: string, log: Logger): Promise<string>{
-        return new Promise((resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
             if (this.dataExpired){
                 // check if a session is alreay in progress
                 if (!this.dataUpdateInProgress) {
+                    this.dataUpdateInProgress = true;
                     // no update in progress, so initiate one
                     log.info("Data is expired, initiating characteristic refresh")
-                    this.connect(ip, password, serial, log)
+                    await this.connect(ip, password, serial, log)
                         .catch((error) => reject(error))
-                        .then((websocket) => {
-                            this.refreshCharacteristics(websocket as WebSocket, log)
+                        .then(async (websocket) => {
+                            await this.refreshCharacteristics(websocket as WebSocket, log)
                                 .catch((error) => reject(error))
                                 .then((values) => {
+                                    // store the values and end the update
                                     this.cachedValues = values as Map<string, string>
+                                    this.dataUpdateInProgress = false;
                                 })
                         });  
                 }
