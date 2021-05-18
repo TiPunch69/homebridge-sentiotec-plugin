@@ -7,6 +7,7 @@ import {
   CharacteristicSetCallback,
   CharacteristicValue,
   HAP,
+  HAPStatus,
   Logging,
   Service
 } from "homebridge";
@@ -50,36 +51,43 @@ export = (api: API) => {
 };
 
 class SentiotecSaunaAccessory implements AccessoryPlugin {
-
+  /**
+   * the general log file
+   */
   private readonly log: Logging;
-  private readonly name: string;
-  private saunaOn: boolean = false;
-
-  // the current temperature  
+  /**
+   * the termostat service
+   */
   private readonly temperaturService: Service;
-  // the general information
+  /**
+   * the general information service
+   */
   private readonly informationService: Service;
-
+  /**
+   * the Sentiotec websocket API
+   */
+  private sentioAPI: SentiotecAPI;
+  /**
+   * the last current temperature
+   */
+  private currentTemperature: number = 0;
+  /**
+   * the configuration of the accessory
+   */
+  private readonly config: AccessoryConfig;
+  /**
+   * the constructor from the HAP API
+   */
   constructor(log: Logging, config: AccessoryConfig, api: API) {
-
-    const sentioAPI = new SentiotecAPI(log);
-
+    this.sentioAPI = new SentiotecAPI(log);
     this.log = log;
-    this.name = config.name;
-
-    // get the information from the sauna
+    this.config = config;
     
     // temperature service
-    this.temperaturService = new hap.Service.Thermostat(this.name);
+    this.temperaturService = new hap.Service.Thermostat(config.name);
     // current temperature
     this.temperaturService.getCharacteristic(hap.Characteristic.CurrentTemperature)
-      .on(CharacteristicEventTypes.GET, (callback: CharacteristicGetCallback) => {
-        log.info("Getting current sauna temperature");
-        /*
-        TODO: get the current temperature from the API
-        */
-        callback(undefined, 100);
-      });
+      .onGet(this.getCurrentTemperature.bind(this));
     // target temperature
     this.temperaturService.getCharacteristic(hap.Characteristic.TargetTemperature)
       .on(CharacteristicEventTypes.GET, (callback: CharacteristicGetCallback) => {
@@ -127,6 +135,36 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
       .setCharacteristic(hap.Characteristic.SerialNumber, "12345")
       .setCharacteristic(hap.Characteristic.ProductData, "Some Product Information with some additional info");
     log.info("Sauna finished initializing");
+  }
+  /**
+   * This function returns the current temperature in the form of a callback
+   * @param callback the callback with the information
+   */
+  getCurrentTemperature(){
+    if (this.sentioAPI.dataExpired){
+      // data has expired, so return the old value for now and then send an update to not provoke a timeout error
+      this.sentioAPI.getCharacteristic(0,11, this.config.ip, this.config.password, this.config.serial, this.log)
+        .then(value => {
+          var intValue :number = parseInt(value);
+          if (intValue > 100){
+            intValue = 100;
+          }
+          this.log.info("Updating current sauna temperature on characteristic:" + intValue);
+          this.temperaturService.getCharacteristic(hap.Characteristic.CurrentTemperature).updateValue(intValue);
+          this.currentTemperature = intValue;  
+        })
+        .catch(error =>  this.temperaturService.getCharacteristic(hap.Characteristic.CurrentTemperature).updateValue(error));  
+        return this.currentTemperature; 
+    }
+    else {
+      var intValue :number = parseInt(this.sentioAPI.getCachedCharacteristic(0,11));
+          if (intValue > 100){
+            intValue = 100;
+      }
+      // data is still current, so update the characteristic now
+      this.currentTemperature = intValue;
+      return intValue;
+    }
   }
   /*
    * This method is called directly after creation of this instance.

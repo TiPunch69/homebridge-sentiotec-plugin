@@ -30,7 +30,7 @@ export class SentiotecAPI {
     /**
      * indicates that a data update is needed
      */
-    private dataExpired: boolean = true;
+    public dataExpired: boolean = true;
     /**
      * indicates that a data refresh is currently in progress
      */
@@ -81,17 +81,17 @@ export class SentiotecAPI {
                             "user":			"root",
                             "passwd":		passwdMD5
                         }
-                        log.info("Initial connection confirmation received, sending authentication details");
+                        log.debug("Initial connection confirmation received, sending authentication details");
                         websocket.send(JSON.stringify(authenticationObject));
                         break;
                     case "cmd_auth_response":
                         // setp2: authentication
                         if (pronetMessage.value=="true") {
-                            log.info("Authentication successful");
+                            log.debug("Authentication successful");
                             clearTimeout(timeout);
                             resolve(websocket);
                         } else {
-                            log.info("Authentication unsuccessful, terminating websocket.");
+                            log.debug("Authentication unsuccessful, terminating websocket.");
                             clearTimeout(timeout);
                             websocket.close();
                             reject(new Error("Authentication unsuccessful"))
@@ -126,7 +126,7 @@ export class SentiotecAPI {
                 var pronetMessage = JSON.parse(message.data.toString());
                 switch(pronetMessage.cmd){
                     case "cmd_knx_write":
-                        log.info("Information message received: " + message.data.toString());
+                        //log.debug("Information message received: " + message.data.toString());
                         values.set(pronetMessage.addr, pronetMessage.value);                    
                         if (pronetMessage.addr == "183/1/47"){
                             // all finished, as last dataset was reached
@@ -168,35 +168,29 @@ export class SentiotecAPI {
      */
     public getCharacteristic(saunaID:number, characteristicID:number, ip: string, password: string, serial: string, log: Logger): Promise<string>{
         return new Promise(async (resolve, reject) => {
-            if (this.dataExpired){
-                // check if a session is alreay in progress
-                if (!this.dataUpdateInProgress) {
-                    this.dataUpdateInProgress = true;
-                    // no update in progress, so initiate one
-                    log.info("Data is expired, initiating characteristic refresh")
-                    await this.connect(ip, password, serial, log)
-                        .catch((error) => reject(error))
-                        .then(async (websocket) => {
-                            await this.refreshCharacteristics(websocket as WebSocket, log)
-                                .catch((error) => reject(error))
-                                .then((values) => {
-                                    // store the values and end the update
-                                    this.cachedValues = values as Map<string, string>
-                                    this.dataUpdateInProgress = false;
-                                })
-                        });  
-                }
-                else {
-                    log.info("Characteristic refresh is in progress, delay the request");
-                    setTimeout(() => {
-                        resolve(this.getCachedCharacteristic(saunaID, characteristicID));
-
-                    }, REFRESH_TIMEOUT/4);
-                }
+            // check if a session is alreay in progress
+            if (!this.dataUpdateInProgress) {
+                this.dataUpdateInProgress = true;
+                // no update in progress, so initiate one
+                log.debug("Data is expired, initiating characteristic refresh")
+                await this.connect(ip, password, serial, log)
+                    .catch((error) => reject(error))
+                    .then(async (websocket) => {
+                        await this.refreshCharacteristics(websocket as WebSocket, log)
+                            .catch((error) => reject(error))
+                            .then((values) => {
+                                // store the values and end the update
+                                this.cachedValues = values as Map<string, string>
+                                this.dataUpdateInProgress = false;
+                            })
+                    });  
             }
             else {
-                log.info("Data is still valid, fetching needed values");
-                resolve(this.getCachedCharacteristic(saunaID, characteristicID));
+                log.debug("Characteristic refresh is in progress, delay the request");
+                setTimeout(() => {
+                    resolve(this.getCachedCharacteristic(saunaID, characteristicID));
+
+                }, REFRESH_TIMEOUT/4);
             }
         });
     }
@@ -205,7 +199,7 @@ export class SentiotecAPI {
      * @param saunaID the ID of the sauna
      * @param characteristicID the ID of the characteristic. 
      */
-    private getCachedCharacteristic(saunaID:number, characteristicID:number): string{
+    public getCachedCharacteristic(saunaID:number, characteristicID:number): string{
         const characteristicString: string = "183/" + saunaID + "/" + characteristicID;
         if (this.cachedValues.has(characteristicString)){
             return this.cachedValues.get(characteristicString) as string;
