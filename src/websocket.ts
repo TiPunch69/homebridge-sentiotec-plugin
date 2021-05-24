@@ -36,6 +36,11 @@ export class SentiotecAPI {
      */
     private dataUpdateInProgress: boolean = false;
     /**
+     * indicates if a/the Sauna is actually connected to the pronet unit
+     * TODO: IMPLEMENT
+     */
+    private connected:boolean = false;
+    /**
      * the constructor
      * @param log the logger to be used
      */
