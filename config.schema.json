@@ -30,7 +30,13 @@
                 "type": "string",
                 "required": true,
                 "default": "sentiotec"
-              }
+            },
+            "secondary": {
+                "title": "Secondary Sauna (restart required)",
+                "type": "boolean",
+                "required": true,
+                "default": false
+            }
         }
     }
 }
