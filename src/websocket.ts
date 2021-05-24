@@ -159,6 +159,7 @@ export class SentiotecAPI {
      * 
      * @param saunaID the ID of the sauna (either 0 for Sauna 1 oder 1 for Sauna 2)
      * @param characteristicID the ID of the characteristic. Currently supported characteristics are:
+     * Sauna Active: 183/0/0
      * Current temperature: 183/0/11
      * Target temperature: 183/0/2
      * Status: 183/0/1
