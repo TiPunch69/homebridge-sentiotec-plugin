@@ -1,7 +1,12 @@
 import WebSocket, { ErrorEvent } from "ws";
 import {Md5} from 'ts-md5/dist/md5';
-import {Logger} from 'homebridge';
+import {
+    Logger, 
+    Service,
+    HAP
+} from 'homebridge';
 
+let hap: HAP;
 /**
  * the timeout for an authentication request
  */
@@ -37,7 +42,6 @@ export class SentiotecAPI {
     private dataUpdateInProgress: boolean = false;
     /**
      * indicates if a/the Sauna is actually connected to the pronet unit
-     * TODO: IMPLEMENT
      */
     private connected:boolean = false;
     /**
@@ -113,11 +117,12 @@ export class SentiotecAPI {
     }
     /**
      * This function refreshes all characteristics.
+     * @param saunaID the number of the sauna in question
      * @param websocket the open websocket
      * @param log the logger to output status messages
      * @returns a Promise that after all have been refreshed
      */
-    private refreshCharacteristics(websocket: WebSocket, log: Logger): Promise<Map<string, string>>{
+    private refreshCharacteristics(saunaID: number, websocket: WebSocket, log: Logger): Promise<Map<string, string>>{
         // the map of values
         var values: Map<string, string> = new Map();
        
@@ -132,6 +137,15 @@ export class SentiotecAPI {
                 switch(pronetMessage.cmd){
                     case "cmd_knx_write":
                         //log.debug("Information message received: " + message.data.toString());
+                        if (pronetMessage.addr == "183/" + saunaID + "/0"){
+                            if (parseInt(pronetMessage.value) == 1){
+                                this.connected = true;
+                            }
+                            else {
+                                log.info("Sauna not connected");
+                                this.connected = false;
+                            }
+                        }
                         values.set(pronetMessage.addr, pronetMessage.value);                    
                         if (pronetMessage.addr == "183/1/47"){
                             // all finished, as last dataset was reached
@@ -172,7 +186,7 @@ export class SentiotecAPI {
      * ConnectionStatus: 183/0/22
      * @returns the value
      */
-    public getCharacteristic(saunaID:number, characteristicID:number, ip: string, password: string, serial: string, log: Logger): Promise<string>{
+    public getCharacteristic(saunaID:number, characteristicID:number, ip: string, password: string, serial: string, log: Logger): Promise<undefined>{
         return new Promise(async (resolve, reject) => {
             // check if a session is alreay in progress
             if (!this.dataUpdateInProgress) {
@@ -182,7 +196,7 @@ export class SentiotecAPI {
                 await this.connect(ip, password, serial, log)
                     .catch((error) => reject(error))
                     .then(async (websocket) => {
-                        await this.refreshCharacteristics(websocket as WebSocket, log)
+                        await this.refreshCharacteristics(saunaID, websocket as WebSocket, log)
                             .catch((error) => reject(error))
                             .then((values) => {
                                 // store the values and end the update
@@ -194,7 +208,7 @@ export class SentiotecAPI {
             else {
                 log.debug("Characteristic refresh is in progress, delay the request");
                 setTimeout(() => {
-                    resolve(this.getCachedCharacteristic(saunaID, characteristicID));
+                    resolve(undefined);
 
                 }, REFRESH_TIMEOUT/4);
             }
@@ -205,7 +219,9 @@ export class SentiotecAPI {
      * @param saunaID the ID of the sauna
      * @param characteristicID the ID of the characteristic. 
      */
-    public getCachedCharacteristic(saunaID:number, characteristicID:number): string{
+    public getCachedCharacteristic(service: Service, saunaID:number, characteristicID:number): string{
+        // hide the service in case the Sauna is not connected
+        service.setHiddenService(!this.connected);
         const characteristicString: string = "183/" + saunaID + "/" + characteristicID;
         if (this.cachedValues.has(characteristicString)){
             return this.cachedValues.get(characteristicString) as string;

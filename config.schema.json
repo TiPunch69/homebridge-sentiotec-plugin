@@ -31,11 +31,14 @@
                 "required": true,
                 "default": "sentiotec"
             },
-            "secondary": {
-                "title": "Secondary Sauna (restart required)",
-                "type": "boolean",
-                "required": true,
-                "default": false
+            "sauna": {
+                "title": "Sauna",
+                "type": "integer",
+                "oneOf": [
+                    { "title": "Sauna 1", "enum": [0] },
+                    { "title": "Sauna 2", "enum": [1] }
+                ],
+                "default": 0
             }
         }
     }

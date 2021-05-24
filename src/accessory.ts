@@ -7,10 +7,10 @@ import {
   CharacteristicSetCallback,
   CharacteristicValue,
   HAP,
-  HAPStatus,
   Logging,
   Service
 } from "homebridge";
+import { timingSafeEqual } from "node:crypto";
 import { SentiotecAPI } from './websocket';
 
 
@@ -44,7 +44,7 @@ const FIRMWARE_ID: number = 21;
  */
 export = (api: API) => {
   hap = api.hap;
-  api.registerAccessory("SentiotecSaunaAccessory", SentiotecSaunaAccessory);
+  api.registerAccessory("Sentiotec Sauna Control Plugin", SentiotecSaunaAccessory);
 };
 
 class SentiotecSaunaAccessory implements AccessoryPlugin {
@@ -80,13 +80,10 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
     this.sentioAPI = new SentiotecAPI(log);
     this.log = log;
     this.config = config;
-    if (this.config.secondary === true){
-      this.log.info("Secondary sauna is enabled, switching ID");
-      this.saunaId = 1;
-    }
+    this.saunaId = this.config.sauna;
     
     // temperature service
-    this.temperaturService = new hap.Service.Thermostat(config.name);
+    this.temperaturService = new hap.Service.Thermostat(this.config.name);
     // current temperature
     this.temperaturService.getCharacteristic(hap.Characteristic.CurrentTemperature)
       .onGet(this.getCurrentTemperature.bind(this))
@@ -124,6 +121,8 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
       callback(undefined, hap.Characteristic.TargetHeatingCoolingState.HEAT);
     })
 
+    this.temperaturService.setCharacteristic(hap.Characteristic.Name, this.config.name);
+
     this.informationService = new hap.Service.AccessoryInformation()
       .setCharacteristic(hap.Characteristic.Manufacturer, "Sentiotec")
       .setCharacteristic(hap.Characteristic.Model, "Pronet")
@@ -143,7 +142,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
       // data has expired, so return the old value for now and then send an update to not provoke a timeout error
       this.sentioAPI.getCharacteristic(this.saunaId, CURRENT_TEMPERATURE_ID, this.config.ip, this.config.password, this.config.serial, this.log)
         .then(value => {
-          var intValue :number = parseInt(this.sentioAPI.getCachedCharacteristic(this.saunaId, CURRENT_TEMPERATURE_ID));
+          var intValue :number = parseInt(this.sentioAPI.getCachedCharacteristic(this.temperaturService, this.saunaId, CURRENT_TEMPERATURE_ID));
           this.log.info("Updating current sauna temperature on characteristic:" + intValue);
           this.temperaturService.getCharacteristic(hap.Characteristic.CurrentTemperature).updateValue(intValue);
         })
@@ -152,7 +151,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
     }
     else {
       // data is still current, so update the characteristic now
-      return parseInt(this.sentioAPI.getCachedCharacteristic(this.saunaId, CURRENT_TEMPERATURE_ID));
+      return parseInt(this.sentioAPI.getCachedCharacteristic(this.temperaturService, this.saunaId, CURRENT_TEMPERATURE_ID));
     }
   }
     /**
@@ -164,7 +163,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
       // data has expired, so return the old value for now and then send an update to not provoke a timeout error
       this.sentioAPI.getCharacteristic(this.saunaId, TARGET_TEMPERATURE_ID, this.config.ip, this.config.password, this.config.serial, this.log)
         .then(value => {
-          var intValue :number = parseInt(this.sentioAPI.getCachedCharacteristic(this.saunaId, TARGET_TEMPERATURE_ID));
+          var intValue :number = parseInt(this.sentioAPI.getCachedCharacteristic(this.temperaturService, this.saunaId, TARGET_TEMPERATURE_ID));
           this.log.info("Updating target sauna temperature on characteristic: " + intValue);
           this.temperaturService.getCharacteristic(hap.Characteristic.TargetTemperature).updateValue(intValue);
         })
@@ -172,7 +171,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
         return 50; 
     }
     else {
-      return parseInt(this.sentioAPI.getCachedCharacteristic(this.saunaId, TARGET_TEMPERATURE_ID));
+      return parseInt(this.sentioAPI.getCachedCharacteristic(this.temperaturService, this.saunaId, TARGET_TEMPERATURE_ID));
     }
   }
   /**
@@ -184,7 +183,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
       // data has expired, so return the old value for now and then send an update to not provoke a timeout error
       this.sentioAPI.getCharacteristic(this.saunaId, FIRMWARE_ID, this.config.ip, this.config.password, this.config.serial, this.log)
         .then(value => {
-          var stringValue: string = this.sentioAPI.getCachedCharacteristic(this.saunaId, FIRMWARE_ID);
+          var stringValue: string = this.sentioAPI.getCachedCharacteristic(this.informationService, this.saunaId, FIRMWARE_ID);
           this.log.info("Updating Firmaware revision on characteristic:" + stringValue);
           this.informationService.getCharacteristic(hap.Characteristic.FirmwareRevision).updateValue(stringValue);
         })
@@ -192,7 +191,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
         return "UNKNOWN"; 
     }
     else {
-      return this.sentioAPI.getCachedCharacteristic(this.saunaId, FIRMWARE_ID);
+      return this.sentioAPI.getCachedCharacteristic(this.informationService, this.saunaId, FIRMWARE_ID);
     }
   }
   /*
