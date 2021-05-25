@@ -4,8 +4,6 @@ import {
   API,
   CharacteristicEventTypes,
   CharacteristicGetCallback,
-  CharacteristicSetCallback,
-  CharacteristicValue,
   Characteristic,
   HAP,
   Logging,
@@ -23,7 +21,11 @@ import { SentiotecAPI } from './websocket';
  */
 let hap: HAP;
 /**
- * The maximum sauna temperature
+ * the ID to check or set if the sauna is enabled
+ */
+const ACTIVE = 1;
+/**
+ * the maximum sauna temperature
  */
 const MAX_TEMPERATURE = 120;
 /**
@@ -95,15 +97,13 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
     // target temperature
     this.temperaturService.getCharacteristic(hap.Characteristic.TargetTemperature)
       .onGet(this.getTargetTemperature.bind(this))
-      .on(CharacteristicEventTypes.SET, (value: CharacteristicValue, callback: CharacteristicSetCallback) => {
-        log.info('Setting the sauna target temperature to ' + value);
-        callback();
-      })
+      .onSet(this.setTargetTemperatur.bind(this))
       .setProps({
         minValue: 50,
         maxValue: MAX_TEMPERATURE,
         minStep: 1,
       });
+
     // temperature units
     this.temperaturService.getCharacteristic(hap.Characteristic.TemperatureDisplayUnits)
       .on(CharacteristicEventTypes.GET, (callback: CharacteristicGetCallback) => {
@@ -111,15 +111,12 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
         callback(undefined, hap.Characteristic.TemperatureDisplayUnits.CELSIUS);
       });
 
-    // current cooling state - always on heating (no cooling sauna)
     this.temperaturService.getCharacteristic(hap.Characteristic.CurrentHeatingCoolingState)
-      .on(CharacteristicEventTypes.GET, (callback: CharacteristicGetCallback) => {
-        callback(undefined, hap.Characteristic.CurrentHeatingCoolingState.HEAT);
-      });
+      .onGet(this.getActiveState.bind(this));
+
     this.temperaturService.getCharacteristic(hap.Characteristic.TargetHeatingCoolingState)
-      .on(CharacteristicEventTypes.GET, (callback: CharacteristicGetCallback) => {
-        callback(undefined, hap.Characteristic.TargetHeatingCoolingState.HEAT);
-      });
+      .onGet(this.getActiveState.bind(this))
+      .onSet(this.setActiveState.bind(this));
 
     this.temperaturService.setCharacteristic(hap.Characteristic.Name, this.config.name);
 
@@ -131,6 +128,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
       .setCharacteristic(hap.Characteristic.ProductData, 'Sauna heater with Pronet Web interface');
     this.informationService.getCharacteristic(hap.Characteristic.FirmwareRevision)
       .onGet(this.getFirmwareVersion.bind(this));
+
     log.info('Sauna finished initializing');
   }
 
@@ -143,7 +141,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
    */
   /* eslint-disable @typescript-eslint/no-explicit-any*/
   private getCharacteristic(characteristicID: number, characteristicName: string,
-    converterFunction: (value: string | null) => any, characteristic: Characteristic) : any{
+    converterFunction: (value: string | null) => any, characteristic: Characteristic): any {
     if (this.sentioAPI.dataExpired) {
       // data has expired, so return the old value for now and then send an update to not provoke a timeout error
       this.sentioAPI.refreshCharacteristics(this.saunaId, characteristicID,
@@ -230,6 +228,48 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
       },
       this.informationService.getCharacteristic(hap.Characteristic.FirmwareRevision),
     );
+  }
+
+  /**
+   * This function returns the currently active state
+   * @returns the currently active state (either HEAT or OFF, but never COOL)
+   */
+  getActiveState() {
+    return this.getCharacteristic(ACTIVE,
+      'Sauna Enabled',
+      (value: string | null) => {
+        if (value === null) {
+          return null;
+        }
+        if (parseInt(value) === 1) {
+          return hap.Characteristic.CurrentHeatingCoolingState.HEAT;
+        } else {
+          return hap.Characteristic.CurrentHeatingCoolingState.OFF;
+        }
+      },
+      this.temperaturService.getCharacteristic(hap.Characteristic.CurrentHeatingCoolingState),
+
+    );
+  }
+
+  /**
+   * This function sets the target state
+   * @param value the target state
+   */
+  setActiveState(value) {
+    let target = 0;
+    if (value === hap.Characteristic.TargetHeatingCoolingState.HEAT) {
+      target = 1;
+    }
+    this.log.info('Setting target state to :' + target + '(NOT YET IMPLEMENTED)');
+  }
+
+  /**
+   * This function sets the target temperature
+   * @param value the target value
+   */
+  setTargetTemperatur(value) {
+    this.log.info('Setting target temperature to :' + value + '(NOT YET IMPLEMENTED)');
   }
 
   /*
