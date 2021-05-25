@@ -1,8 +1,8 @@
 {
-  "private": true,
+  "private": false,
   "displayName": "Homebridge Sentiotec Plugin",
   "name": "homebridge-sentiotec-plugin",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A plugin to connect a Sentiotec Sauna to the hombridge project and eventually to Apple Homekit",
   "license": "Apache-2.0",
   "repository": {
@@ -24,7 +24,10 @@
     "prepublishOnly": "npm run lint && npm run build"
   },
   "keywords": [
-    "homebridge-plugin"
+    "homebridge-plugin",
+    "sentiotec",
+    "sauna",
+    "thermostat"
   ],
   "devDependencies": {
     "@types/node": "^14.14.31",
