@@ -6,9 +6,12 @@ import {
   CharacteristicGetCallback,
   CharacteristicSetCallback,
   CharacteristicValue,
+  Characteristic,
   HAP,
   Logging,
-  Service
+  Service,
+  HAPStatus,
+  HapStatusError
 } from "homebridge";
 import { timingSafeEqual } from "node:crypto";
 import { SentiotecAPI } from './websocket';
@@ -134,65 +137,102 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
     log.info("Sauna finished initializing");
   }
   /**
+   * This function retrieves a characteristic.
+   * @param characteristicID the ID of the characteristic
+   * @param characteristicName the human readable name of the characteristic for log output
+   * @param converterFunction the converter function to get the correct value
+   * @param characteristic the characteristic that should be udpated
+   */
+  private getCharacteristic(characteristicID: number, characteristicName: string,  converterFunction: (value: string | null) => any, characteristic: Characteristic) : any{
+    if (this.sentioAPI.dataExpired){
+      // data has expired, so return the old value for now and then send an update to not provoke a timeout error
+      this.sentioAPI.refreshCharacteristics(this.saunaId, characteristicID, this.config.ip, this.config.password, this.config.serial, this.log)
+        .then(() => {
+          if (!this.sentioAPI.connected){
+            // Sauna is not connected to return an error
+            this.log.info("Sauna \"" +  this.saunaId + "\" not connected");
+            characteristic.updateValue(new Error("Update characteristic failed: Sauna \"" +  this.saunaId + "\" not connected"));
+          } 
+          else {
+            var value: string = this.sentioAPI.getCachedCharacteristic(this.temperaturService, this.saunaId, characteristicID);
+            var convertedValue = converterFunction(value);
+            this.log.debug("Updating characteristic \"" + characteristicName + "\" with value :" + convertedValue);
+            characteristic.updateValue(convertedValue);  
+          }
+
+        })
+        .catch(error =>  characteristic.updateValue(error));  
+        return converterFunction(null); 
+    }
+    else {
+      // data is still current
+      if (!this.sentioAPI.connected){
+        // Sauna is not connected to return an error
+        this.log.info("Sauna \"" +  this.saunaId + "\" not connected")
+        return null;
+      } 
+      else {
+        var value: string = this.sentioAPI.getCachedCharacteristic(this.temperaturService, this.saunaId, characteristicID);
+        var convertedValue = converterFunction(value);
+        this.log.debug("Returning characteristic \"" + characteristicName + "\" with value :" + convertedValue);
+        return convertedValue;
+      }
+    }
+  }
+
+  /**
    * This function returns the current temperature in the form of a callback.
    * @return the target temperature
    */
-  getCurrentTemperature(): number{
-    if (this.sentioAPI.dataExpired){
-      // data has expired, so return the old value for now and then send an update to not provoke a timeout error
-      this.sentioAPI.getCharacteristic(this.saunaId, CURRENT_TEMPERATURE_ID, this.config.ip, this.config.password, this.config.serial, this.log)
-        .then(value => {
-          var intValue :number = parseInt(this.sentioAPI.getCachedCharacteristic(this.temperaturService, this.saunaId, CURRENT_TEMPERATURE_ID));
-          this.log.info("Updating current sauna temperature on characteristic:" + intValue);
-          this.temperaturService.getCharacteristic(hap.Characteristic.CurrentTemperature).updateValue(intValue);
-        })
-        .catch(error =>  this.temperaturService.getCharacteristic(hap.Characteristic.CurrentTemperature).updateValue(error));  
-        return 0; 
-    }
-    else {
-      // data is still current, so update the characteristic now
-      return parseInt(this.sentioAPI.getCachedCharacteristic(this.temperaturService, this.saunaId, CURRENT_TEMPERATURE_ID));
-    }
+  getCurrentTemperature(): number | null{
+    return this.getCharacteristic(CURRENT_TEMPERATURE_ID, 
+      "Current Temperature",
+      (value: string | null) => {
+        if (value == null){
+          return 0;
+        }
+        else {
+          return parseInt(value);
+        }
+      },
+      this.temperaturService.getCharacteristic(hap.Characteristic.CurrentTemperature) 
+    );
   }
     /**
    * This function returns the target temperature in the form of a callback
    * @returns the target temperature
    */
   getTargetTemperature(): number{
-    if (this.sentioAPI.dataExpired){
-      // data has expired, so return the old value for now and then send an update to not provoke a timeout error
-      this.sentioAPI.getCharacteristic(this.saunaId, TARGET_TEMPERATURE_ID, this.config.ip, this.config.password, this.config.serial, this.log)
-        .then(value => {
-          var intValue :number = parseInt(this.sentioAPI.getCachedCharacteristic(this.temperaturService, this.saunaId, TARGET_TEMPERATURE_ID));
-          this.log.info("Updating target sauna temperature on characteristic: " + intValue);
-          this.temperaturService.getCharacteristic(hap.Characteristic.TargetTemperature).updateValue(intValue);
-        })
-        .catch(error =>  this.temperaturService.getCharacteristic(hap.Characteristic.TargetTemperature).updateValue(error));  
-        return 50; 
-    }
-    else {
-      return parseInt(this.sentioAPI.getCachedCharacteristic(this.temperaturService, this.saunaId, TARGET_TEMPERATURE_ID));
-    }
+    return this.getCharacteristic(TARGET_TEMPERATURE_ID,
+      "Target Temperature",
+      (value: string | null) => {
+        if (value == null){
+          return 0;
+        }
+        else {
+          return parseInt(value);
+        }
+      },
+      this.temperaturService.getCharacteristic(hap.Characteristic.TargetTemperature) 
+    );
   }
   /**
    * This function returns the software version of the Sauna control.
    * @returns the software version
    */
   getFirmwareVersion(): string{
-    if (this.sentioAPI.dataExpired){
-      // data has expired, so return the old value for now and then send an update to not provoke a timeout error
-      this.sentioAPI.getCharacteristic(this.saunaId, FIRMWARE_ID, this.config.ip, this.config.password, this.config.serial, this.log)
-        .then(value => {
-          var stringValue: string = this.sentioAPI.getCachedCharacteristic(this.informationService, this.saunaId, FIRMWARE_ID);
-          this.log.info("Updating Firmaware revision on characteristic:" + stringValue);
-          this.informationService.getCharacteristic(hap.Characteristic.FirmwareRevision).updateValue(stringValue);
-        })
-        .catch(error =>  this.informationService.getCharacteristic(hap.Characteristic.FirmwareRevision).updateValue(error));  
-        return "UNKNOWN"; 
-    }
-    else {
-      return this.sentioAPI.getCachedCharacteristic(this.informationService, this.saunaId, FIRMWARE_ID);
-    }
+    return this.getCharacteristic(FIRMWARE_ID, 
+      "Firmware Version",
+      (value: string | null) => {
+        if (value == null){
+          return "UNKNOWN";
+        }
+        else {
+          return value;
+        }
+      },
+      this.informationService.getCharacteristic(hap.Characteristic.FirmwareRevision) 
+    );
   }
   /*
    * This method is called directly after creation of this instance.

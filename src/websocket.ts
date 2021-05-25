@@ -43,7 +43,7 @@ export class SentiotecAPI {
     /**
      * indicates if a/the Sauna is actually connected to the pronet unit
      */
-    private connected:boolean = false;
+    public connected:boolean = false;
     /**
      * the constructor
      * @param log the logger to be used
@@ -122,7 +122,7 @@ export class SentiotecAPI {
      * @param log the logger to output status messages
      * @returns a Promise that after all have been refreshed
      */
-    private refreshCharacteristics(saunaID: number, websocket: WebSocket, log: Logger): Promise<Map<string, string>>{
+    private querySaunaParameters(saunaID: number, websocket: WebSocket, log: Logger): Promise<Map<string, string>>{
         // the map of values
         var values: Map<string, string> = new Map();
        
@@ -186,7 +186,7 @@ export class SentiotecAPI {
      * ConnectionStatus: 183/0/22
      * @returns the value
      */
-    public getCharacteristic(saunaID:number, characteristicID:number, ip: string, password: string, serial: string, log: Logger): Promise<undefined>{
+    public refreshCharacteristics(saunaID:number, characteristicID:number, ip: string, password: string, serial: string, log: Logger): Promise<undefined>{
         return new Promise(async (resolve, reject) => {
             // check if a session is alreay in progress
             if (!this.dataUpdateInProgress) {
@@ -196,7 +196,7 @@ export class SentiotecAPI {
                 await this.connect(ip, password, serial, log)
                     .catch((error) => reject(error))
                     .then(async (websocket) => {
-                        await this.refreshCharacteristics(saunaID, websocket as WebSocket, log)
+                        await this.querySaunaParameters(saunaID, websocket as WebSocket, log)
                             .catch((error) => reject(error))
                             .then((values) => {
                                 // store the values and end the update
