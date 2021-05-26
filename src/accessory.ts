@@ -66,26 +66,16 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
    * the Sentiotec websocket API
    */
   private sentioAPI: SentiotecAPI;
-  /**
-   * the configuration of the accessory
-   */
-  private readonly config: AccessoryConfig;
-  /**
-   * the unique ID of the sauna
-   */
-  private saunaId = 0;
 
   /**
    * the constructor from the HAP API
    */
   constructor(log: Logging, config: AccessoryConfig) {
-    this.sentioAPI = new SentiotecAPI(log);
+    this.sentioAPI = new SentiotecAPI(log, config);
     this.log = log;
-    this.config = config;
-    this.saunaId = this.config.sauna;
 
     // temperature service
-    this.temperaturService = new hap.Service.Thermostat(this.config.name);
+    this.temperaturService = new hap.Service.Thermostat(config.name);
     // current temperature
     this.temperaturService.getCharacteristic(hap.Characteristic.CurrentTemperature)
       .onGet(this.getCurrentTemperature.bind(this))
@@ -118,13 +108,13 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
       .onGet(this.getActiveState.bind(this))
       .onSet(this.setActiveState.bind(this));
 
-    this.temperaturService.setCharacteristic(hap.Characteristic.Name, this.config.name);
+    this.temperaturService.setCharacteristic(hap.Characteristic.Name, config.name);
 
     this.informationService = new hap.Service.AccessoryInformation()
       .setCharacteristic(hap.Characteristic.Manufacturer, 'Sentiotec')
       .setCharacteristic(hap.Characteristic.Model, 'Pronet')
-      .setCharacteristic(hap.Characteristic.Name, this.config.name)
-      .setCharacteristic(hap.Characteristic.SerialNumber, this.config.serial)
+      .setCharacteristic(hap.Characteristic.Name, config.name)
+      .setCharacteristic(hap.Characteristic.SerialNumber, config.serial)
       .setCharacteristic(hap.Characteristic.ProductData, 'Sauna heater with Pronet Web interface');
     this.informationService.getCharacteristic(hap.Characteristic.FirmwareRevision)
       .onGet(this.getFirmwareVersion.bind(this));
@@ -142,45 +132,27 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
   /* eslint-disable @typescript-eslint/no-explicit-any*/
   private getCharacteristic(characteristicID: number, characteristicName: string,
     converterFunction: (value: string | null) => any, characteristic: Characteristic): any {
-    if (this.sentioAPI.dataExpired) {
-      // data has expired, so return the old value for now and then send an update to not provoke a timeout error
-      this.sentioAPI.refreshCharacteristics(this.saunaId, characteristicID,
-        this.config.ip, this.config.password, this.config.serial, this.log)
-        .then(() => {
-          if (!this.sentioAPI.connected) {
-            // Sauna is not connected to return an error
-            this.log.info('Sauna "' + this.saunaId + '" not connected');
-            characteristic.updateValue(new Error('Update characteristic failed: Sauna "' + this.saunaId + '" not connected'));
-          } else {
-            const value: string = this.sentioAPI.getCachedCharacteristic(this.temperaturService, this.saunaId, characteristicID);
-            const convertedValue = converterFunction(value);
-            this.log.debug('Updating characteristic "' + characteristicName + '" with value :' + convertedValue);
-            characteristic.updateValue(convertedValue);
-          }
-
-        })
-        .catch(error => characteristic.updateValue(error));
-      return converterFunction(null);
-    } else {
-      // data is still current
-      if (!this.sentioAPI.connected) {
-        // Sauna is not connected to return an error
-        this.log.info('Sauna "' + this.saunaId + '" not connected');
-        return null;
-      } else {
-        const value: string = this.sentioAPI.getCachedCharacteristic(this.temperaturService, this.saunaId, characteristicID);
-        const convertedValue = converterFunction(value);
-        this.log.debug('Returning characteristic "' + characteristicName + '" with value :' + convertedValue);
-        return convertedValue;
-      }
-    }
+    this.sentioAPI.getCharacteristic(characteristicID)
+      .then((value) => {
+        if (!this.sentioAPI.connected) {
+          // Sauna is not connected to return an error
+          this.log.info('Sauna not connected');
+          characteristic.updateValue(new Error('Update characteristic failed: Sauna not connected'));
+        } else {
+          const convertedValue = converterFunction(value);
+          this.log.debug('Updating characteristic "' + characteristicName + '" with value :' + convertedValue);
+          characteristic.updateValue(convertedValue);
+        }
+      })
+      .catch(error => characteristic.updateValue(error));
+    return converterFunction(null);
   }
 
   /**
    * This function returns the current temperature in the form of a callback.
    * @return the target temperature
    */
-  getCurrentTemperature(): number | null {
+  getCurrentTemperature(): number {
     return this.getCharacteristic(CURRENT_TEMPERATURE_ID,
       'Current Temperature',
       (value: string | null) => {
@@ -261,7 +233,8 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
     if (value === hap.Characteristic.TargetHeatingCoolingState.HEAT) {
       target = 1;
     }
-    this.log.info('Setting target state to :' + target + '(NOT YET IMPLEMENTED)');
+    this.log.info('Setting target state to :' + target);
+
   }
 
   /**
@@ -269,7 +242,8 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
    * @param value the target value
    */
   setTargetTemperatur(value) {
-    this.log.info('Setting target temperature to :' + value + '(NOT YET IMPLEMENTED)');
+    this.log.info('Setting target temperature to :' + value);
+    this.sentioAPI.setCharacterstic(TARGET_TEMPERATURE_ID, value);
   }
 
   /*
