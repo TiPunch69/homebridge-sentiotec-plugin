@@ -17,6 +17,19 @@ const WEBSOCKET_TIMEOUT = 60000;
  */
 const DATA_VALID_TIMEOUT = 30000;
 /**
+ * This interface defines a sauna characteristic
+ */
+export interface SaunaCharacteristic{
+  /**
+   * the unique ID
+   */
+  readonly id: number;
+  /**
+   * the human readable name
+   */
+  readonly name: string;   
+}
+/**
  * This class is the API via websocket to the Pronet web gateway.
  */
 export class SentiotecAPI {
@@ -61,6 +74,34 @@ export class SentiotecAPI {
    */
   private saunaID = 0;
   /**
+   * the ID and name for the target temperature
+   */
+  public TARGET_TEMPERATURE: SaunaCharacteristic = {
+    id: 2,
+    name: 'Target Temperature',
+  }
+  /**
+   * the ID and name for the current temperature
+   */
+  public readonly CURRENT_TEMPERATURE: SaunaCharacteristic = {
+    id: 11,
+    name: 'Current Temperature',
+  }
+  /**
+   * the ID and name for the firmware
+   */
+  public readonly FIRMWARE: SaunaCharacteristic = {
+    id: 21,
+    name: 'Firmware',
+  }
+  /**
+   * the ID and name for the on/off switch
+   */
+  public readonly ACTIVE: SaunaCharacteristic = {
+    id: 1,
+    name: 'Sauna On/Off'
+  }
+  /**
    * the constructor
    * @param log the logger to be used
    * @param config the service configuration
@@ -95,8 +136,15 @@ export class SentiotecAPI {
 
     return new Promise((resolve, reject) => {
       if (this.websocket !== undefined) {
-        // websocket is open and ready, so do not authenticate again
-        resolve(undefined);
+        if (this.websocket.readyState === this.websocket.OPEN){
+          this.log.debug("Websocket already setup, returning");
+          // websocket is open and ready, so do not authenticate again
+          resolve(undefined);
+        } else {
+          // close it anyway and reopen it
+          this.close();
+        }
+  
       }
       // set an inital timeout for the whole autentication request
       this.websocket = new WebSocket(url, { headers });
@@ -140,6 +188,9 @@ export class SentiotecAPI {
         this.close();
         reject(error);
       };
+      this.websocket.onclose = () => {
+        this.log.warn("Websocket closing");
+      }
     });
   }
 
@@ -159,11 +210,12 @@ export class SentiotecAPI {
    * This function returns a characteristic from the sauna (either cached or directly)
    * @param characteristicID the ID of the characteristic
    */
-  public getCharacteristic(characteristicID: number): Promise<string> {
-    const characteristicString: string = '183/' + this.saunaID + '/' + characteristicID;
+  public getCharacteristic(saunaCharacteristic: SaunaCharacteristic): Promise<string> {
+    const characteristicString: string = '183/' + this.saunaID + '/' + saunaCharacteristic.id;
 
     // check if a data update is in progress and wait the operation timeout, before trying again
     if (this.dataUpdateInProgress) {
+      this.log.debug('Update in progress, delaying characteristic fetching for "' + saunaCharacteristic.name + '"');
       return new Promise((resolve, reject) => {
         setTimeout(() => {
           if (this.cachedValues !== undefined) {
@@ -171,7 +223,6 @@ export class SentiotecAPI {
           } else {
             reject('Data could not be fetched, as another process had a problem.');
           }
-          this.cachedValues = undefined;
         }, OPERATION_TIMEOUT);
       });
     } else {
@@ -180,6 +231,7 @@ export class SentiotecAPI {
           // cache is still valid, so return the value directly
           resolve(this.cachedValues.get(characteristicString) as string);
         } else {
+          this.log.debug('Updating characteristics');
           // data needs to be updated first
           this.dataUpdateInProgress = true;
           this.connect()
@@ -191,29 +243,32 @@ export class SentiotecAPI {
               }, OPERATION_TIMEOUT);
               // initialize the caching map
               this.cachedValues = new Map();
+              this.log.info("Bis hier -> Fehlersuche");
               // wait for the messages
               this.websocket!.onmessage = (message) => {
                 const pronetMessage = JSON.parse(message.data.toString());
                 switch (pronetMessage.cmd) {
                   case 'cmd_knx_write':
-                    //log.debug("Information message received: " + message.data.toString());
-                    this.cachedValues!.set(pronetMessage.addr, pronetMessage.value);
+                    if (this.cachedValues !== undefined) {
+                      this.cachedValues!.set(pronetMessage.addr, pronetMessage.value);
+                    }
                     // first message - sauna active state
                     if (pronetMessage.addr === '183/' + this.saunaID + '/0') {
                       // 0: sauna active information
                       if (parseInt(pronetMessage.value) === 1) {
                         this.connected = true;
                       } else {
-                        this.log.info('Sauna not connected');
                         this.connected = false;
                       }
                     }
                     // last message, all data received
                     if (pronetMessage.addr === '183/1/47') {
                       // all finished, as last dataset was reached
+                      this.log.debug("Update characteristics finished");
                       clearTimeout(timeout);
                       this.dataUpdateInProgress = false;
                       setTimeout(() => {
+                        this.log.debug("Invalidating cache");
                         this.cachedValues = undefined;
                       }, DATA_VALID_TIMEOUT);
                       // return the characteristic
@@ -227,6 +282,15 @@ export class SentiotecAPI {
                 this.close();
                 reject(error);
               };
+              this.log.info("Bis zum Senden -> Fehlersuche");
+              // send update command to get all characteristics
+              // TODO: check start parameter!!!!
+              const refresh = {
+                'cmd': 'cmd_request_update_all',
+                'start': 'true',
+              };
+              this.websocket!.send(JSON.stringify(refresh));
+              this.log.info("Bis zum Ende -> Fehlersuche");
             })
             .catch((error) => reject(error));
         }
@@ -240,13 +304,13 @@ export class SentiotecAPI {
    * @param value the corresponding value (currently only active and temperature - both numbers - can be set)
    * @returns a Promise for the execution
    */
-  public setCharacterstic(characteristicID: number, value: number): Promise<undefined> {
+  public setCharacterstic(saunaCharacteristic: SaunaCharacteristic, value: number): Promise<undefined> {
     return new Promise((resolve, reject) => {
       this.connect()
         .then(() => {
           const setter = {
             'cmd': 'cmd_knx_write',
-            'addr': '183/' + this.saunaID + '/' + characteristicID,
+            'addr': '183/' + this.saunaID + '/' + saunaCharacteristic.id,
             'value': value,
           };
           this.websocket!.send(JSON.stringify(setter));
