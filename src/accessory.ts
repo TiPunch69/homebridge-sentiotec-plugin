@@ -9,10 +9,10 @@ import {
   Logging,
   Service,
 } from 'homebridge';
-import { 
-  SaunaCharacteristic, 
+import {
+  SaunaCharacteristic,
   SentiotecAPI,
- } from './websocket';
+} from './websocket';
 
 
 /**
@@ -141,7 +141,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
       })
       .catch(error => {
         this.log.error('Update characteristic "' + saunaCharacteristic.name + '" failed: ' + error);
-        characteristic.updateValue(new Error(error)); 
+        characteristic.updateValue(new Error(error));
       });
     return converterFunction(null);
   }
@@ -201,7 +201,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
    * This function returns the targetted state
    * @returns the currently active state (either HEAT or OFF, but never COOL)
    */
-   getTargetState() {
+  getTargetState() {
     return this.getCharacteristic(this.sentioAPI.ACTIVE,
       (value: string | null) => {
         if (value === null) {
@@ -226,7 +226,12 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
     return this.getCharacteristic(this.sentioAPI.ACTIVE,
       (value: string | null) => {
         if (value === null) {
+          // a valid value has been received
+          this.temperaturService.setHiddenService(true);
           return hap.Characteristic.CurrentHeatingCoolingState.OFF;
+        } else {
+          // a valid value has been received
+          this.temperaturService.setHiddenService(false);
         }
         if (parseInt(value) === 1) {
           return hap.Characteristic.CurrentHeatingCoolingState.HEAT;
@@ -243,7 +248,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
    * @param value the target state
    */
   setTargetState(value) {
-    this.log.info("Setting target state to " + value.toString());
+    this.log.info('Setting target state to ' + value.toString());
     let target = 0;
     if (value === hap.Characteristic.TargetHeatingCoolingState.HEAT) {
       target = 1;
@@ -257,7 +262,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
    * @param value the target value
    */
   setTargetTemperatur(value) {
-    this.log.info("Setting target temperature to " + value);
+    this.log.info('Setting target temperature to ' + value);
     this.sentioAPI.setCharacterstic(this.sentioAPI.TARGET_TEMPERATURE, value);
   }
 

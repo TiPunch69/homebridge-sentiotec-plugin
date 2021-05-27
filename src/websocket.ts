@@ -27,7 +27,7 @@ export interface SaunaCharacteristic{
   /**
    * the human readable name
    */
-  readonly name: string;   
+  readonly name: string;
 }
 /**
  * This class is the API via websocket to the Pronet web gateway.
@@ -83,28 +83,32 @@ export class SentiotecAPI {
   public TARGET_TEMPERATURE: SaunaCharacteristic = {
     id: 2,
     name: 'Target Temperature',
-  }
+  };
+
   /**
    * the ID and name for the current temperature
    */
   public readonly CURRENT_TEMPERATURE: SaunaCharacteristic = {
     id: 11,
     name: 'Current Temperature',
-  }
+  };
+
   /**
    * the ID and name for the firmware
    */
   public readonly FIRMWARE: SaunaCharacteristic = {
     id: 21,
     name: 'Firmware',
-  }
+  };
+
   /**
    * the ID and name for the on/off switch
    */
   public readonly ACTIVE: SaunaCharacteristic = {
     id: 1,
-    name: 'Sauna On/Off'
-  }
+    name: 'Sauna On/Off',
+  };
+
   /**
    * the constructor
    * @param log the logger to be used
@@ -141,7 +145,7 @@ export class SentiotecAPI {
     return new Promise((resolve, reject) => {
       if (this.websocket !== undefined) {
         if (this.websocket.readyState === this.websocket.OPEN){
-          this.log.debug("Websocket already setup, returning");
+          this.log.debug('Websocket already setup, returning');
           // websocket is open and ready, so do not authenticate again
           this.firstStart = false;
           resolve(this.websocket);
@@ -149,7 +153,6 @@ export class SentiotecAPI {
           // close it anyway and reopen it
           this.close();
         }
-  
       }
       // set an inital timeout for the whole autentication request
       this.websocket = new WebSocket(url, { headers });
@@ -241,10 +244,9 @@ export class SentiotecAPI {
           this.dataUpdateInProgress = true;
           this.connect()
             .then((websocket) => {
-              this.log.debug("Websocket ready state at fetching: "+ websocket.readyState);
               // set an inital timeout for the whole  request
               const timeout: NodeJS.Timeout = setTimeout(() => {
-                this.websocket!.close();
+                this.close();
                 reject(new Error('Refresh of values failed due to timeout'));
               }, OPERATION_TIMEOUT);
               // initialize the caching map
@@ -270,11 +272,11 @@ export class SentiotecAPI {
                     // last message, all data received
                     if (pronetMessage.addr === '183/1/47') {
                       // all finished, as last dataset was reached
-                      this.log.debug("Update characteristics finished");
+                      this.log.debug('Update characteristics finished');
                       clearTimeout(timeout);
                       this.dataUpdateInProgress = false;
                       setTimeout(() => {
-                        this.log.debug("Invalidating cache");
+                        this.log.debug('Invalidating cache');
                         this.cachedValues = undefined;
                       }, DATA_VALID_TIMEOUT);
                       // return the characteristic
@@ -288,7 +290,6 @@ export class SentiotecAPI {
                 this.close();
                 reject(error);
               };
-              this.log.info("Bis zum Senden -> Fehlersuche: " + this.firstStart + ":" + websocket.readyState.toString());
               // send update command to get all characteristics
               const refresh = {
                 'cmd': 'cmd_request_update_all',
@@ -311,13 +312,13 @@ export class SentiotecAPI {
   public setCharacterstic(saunaCharacteristic: SaunaCharacteristic, value: number): Promise<undefined> {
     return new Promise((resolve, reject) => {
       this.connect()
-        .then(() => {
+        .then((websocket) => {
           const setter = {
             'cmd': 'cmd_knx_write',
             'addr': '183/' + this.saunaID + '/' + saunaCharacteristic.id,
             'value': value,
           };
-          this.websocket!.send(JSON.stringify(setter));
+          websocket.send(JSON.stringify(setter));
           resolve(undefined);
         })
         .catch((error) => {
