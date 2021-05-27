@@ -74,6 +74,10 @@ export class SentiotecAPI {
    */
   private saunaID = 0;
   /**
+   * indicates a first start (for the request of the characteristics)
+   */
+  private firstStart = true;
+  /**
    * the ID and name for the target temperature
    */
   public TARGET_TEMPERATURE: SaunaCharacteristic = {
@@ -139,6 +143,7 @@ export class SentiotecAPI {
         if (this.websocket.readyState === this.websocket.OPEN){
           this.log.debug("Websocket already setup, returning");
           // websocket is open and ready, so do not authenticate again
+          this.firstStart = false;
           resolve(undefined);
         } else {
           // close it anyway and reopen it
@@ -200,10 +205,13 @@ export class SentiotecAPI {
   private close() {
     if (this.websocket !== undefined) {
       this.websocket.close();
-      clearTimeout(this.webSocketTimeout!);
       this.websocket = undefined;
+    }
+    if (this.webSocketTimeout !== undefined){
+      clearTimeout(this.webSocketTimeout!);
       this.webSocketTimeout = undefined;
     }
+    this.firstStart = true;
   }
 
   /**
@@ -282,12 +290,12 @@ export class SentiotecAPI {
                 this.close();
                 reject(error);
               };
-              this.log.info("Bis zum Senden -> Fehlersuche");
+              this.log.info("Bis zum Senden -> Fehlersuche: " + this.firstStart);
               // send update command to get all characteristics
               // TODO: check start parameter!!!!
               const refresh = {
                 'cmd': 'cmd_request_update_all',
-                'start': 'true',
+                'start': this.firstStart,
               };
               this.websocket!.send(JSON.stringify(refresh));
               this.log.info("Bis zum Ende -> Fehlersuche");
