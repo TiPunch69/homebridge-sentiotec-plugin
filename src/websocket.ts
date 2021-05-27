@@ -122,7 +122,7 @@ export class SentiotecAPI {
    * This function creates a new websocket and authenticates the user based on the information given in the constructor
    * @returns a Promise to handle the connection and authentication process
    */
-  private connect(): Promise<undefined> {
+  private connect(): Promise<WebSocket> {
     // the needed security headers
     const headers = {
       'Origin': 'http://192.168.1.1',
@@ -144,7 +144,7 @@ export class SentiotecAPI {
           this.log.debug("Websocket already setup, returning");
           // websocket is open and ready, so do not authenticate again
           this.firstStart = false;
-          resolve(undefined);
+          resolve(this.websocket);
         } else {
           // close it anyway and reopen it
           this.close();
@@ -178,7 +178,7 @@ export class SentiotecAPI {
                 this.log.debug('Timeout reached, closing websocket');
                 this.close();
               }, WEBSOCKET_TIMEOUT);
-              resolve(undefined);
+              resolve(this.websocket!);
             } else {
               this.log.debug('Authentication unsuccessful, terminating websocket.');
               clearTimeout(timeout);
@@ -193,9 +193,6 @@ export class SentiotecAPI {
         this.close();
         reject(error);
       };
-      this.websocket.onclose = () => {
-        this.log.warn("Websocket closing");
-      }
     });
   }
 
@@ -243,7 +240,8 @@ export class SentiotecAPI {
           // data needs to be updated first
           this.dataUpdateInProgress = true;
           this.connect()
-            .then(() => {
+            .then((websocket) => {
+              this.log.debug("Websocket ready state at fetching: "+ websocket.readyState);
               // set an inital timeout for the whole  request
               const timeout: NodeJS.Timeout = setTimeout(() => {
                 this.websocket!.close();
@@ -251,9 +249,9 @@ export class SentiotecAPI {
               }, OPERATION_TIMEOUT);
               // initialize the caching map
               this.cachedValues = new Map();
-              this.log.info("Bis hier -> Fehlersuche");
               // wait for the messages
-              this.websocket!.onmessage = (message) => {
+              websocket.removeAllListeners();
+              websocket.onmessage = (message) => {
                 const pronetMessage = JSON.parse(message.data.toString());
                 switch (pronetMessage.cmd) {
                   case 'cmd_knx_write':
@@ -285,20 +283,18 @@ export class SentiotecAPI {
                     break;
                 }
               };
-              this.websocket!.onerror = (error) => {
+              websocket!.onerror = (error) => {
                 clearTimeout(timeout);
                 this.close();
                 reject(error);
               };
-              this.log.info("Bis zum Senden -> Fehlersuche: " + this.firstStart);
+              this.log.info("Bis zum Senden -> Fehlersuche: " + this.firstStart + ":" + websocket.readyState.toString());
               // send update command to get all characteristics
-              // TODO: check start parameter!!!!
               const refresh = {
                 'cmd': 'cmd_request_update_all',
                 'start': this.firstStart,
               };
-              this.websocket!.send(JSON.stringify(refresh));
-              this.log.info("Bis zum Ende -> Fehlersuche");
+              websocket.send(JSON.stringify(refresh));
             })
             .catch((error) => reject(error));
         }
