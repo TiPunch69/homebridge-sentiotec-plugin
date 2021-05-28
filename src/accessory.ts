@@ -50,10 +50,6 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
    */
   private readonly log: Logging;
   /**
-   * a secondary service to display the temperature
-   */
-  private readonly temperatureService: Service;
-  /**
    * the general information service
    */
   private readonly informationService: Service;
@@ -72,17 +68,6 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
   constructor(log: Logging, config: AccessoryConfig) {
     this.sentioAPI = new SentiotecAPI(log, config);
     this.log = log;
-
-    this.temperatureService = new hap.Service.TemperatureSensor(config.name);
-
-    // Current temperatur
-    this.temperatureService.getCharacteristic(hap.Characteristic.CurrentTemperature)
-    .onGet(this.getCurrentTemperature.bind(this))
-    .setProps({
-      minValue: MIN_CURRENT_TEMPERATURE,
-      maxValue: MAX_TEMPERATURE,
-      minStep: 1,
-    });
 
     this.thermostatService = new hap.Service.Thermostat(config.name);
 
@@ -153,8 +138,17 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
         }
       })
       .catch(error => {
-        this.log.error('Update characteristic "' + saunaCharacteristic.name + '" failed: ' + error);
-        characteristic.updateValue(new Error(error));
+        if (error.message){
+          // a real error object
+          this.log.error('Update characteristic "' + saunaCharacteristic.name + '" failed: ' + error.message);
+          characteristic.updateValue(error);
+        }
+        else {
+          // just a message
+          this.log.error('Update characteristic "' + saunaCharacteristic.name + '" failed: ' + error);
+          characteristic.updateValue(new Error(error));
+        }
+        
       });
     return converterFunction(null);
   }
@@ -286,7 +280,6 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
   getServices(): Service[] {
     return [
       this.informationService,
-      this.temperatureService,
       this.thermostatService,
     ];
   }
