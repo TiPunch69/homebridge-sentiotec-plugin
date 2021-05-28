@@ -50,13 +50,17 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
    */
   private readonly log: Logging;
   /**
-   * the termostat service
+   * a secondary service to display the temperature
    */
-  private readonly temperaturService: Service;
+  private readonly temperatureService: Service;
   /**
    * the general information service
    */
   private readonly informationService: Service;
+  /**
+   * the main thermostat service
+   */
+  private readonly thermostatService: Service;
   /**
    * the Sentiotec websocket API
    */
@@ -69,10 +73,21 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
     this.sentioAPI = new SentiotecAPI(log, config);
     this.log = log;
 
-    // temperature service
-    this.temperaturService = new hap.Service.Thermostat(config.name);
+    this.temperatureService = new hap.Service.TemperatureSensor(config.name);
+
+    // Current temperatur
+    this.temperatureService.getCharacteristic(hap.Characteristic.CurrentTemperature)
+    .onGet(this.getCurrentTemperature.bind(this))
+    .setProps({
+      minValue: MIN_CURRENT_TEMPERATURE,
+      maxValue: MAX_TEMPERATURE,
+      minStep: 1,
+    });
+
+    this.thermostatService = new hap.Service.Thermostat(config.name);
+
     // current temperature
-    this.temperaturService.getCharacteristic(hap.Characteristic.CurrentTemperature)
+    this.thermostatService.getCharacteristic(hap.Characteristic.CurrentTemperature)
       .onGet(this.getCurrentTemperature.bind(this))
       .setProps({
         minValue: MIN_CURRENT_TEMPERATURE,
@@ -80,7 +95,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
         minStep: 1,
       });
     // target temperature
-    this.temperaturService.getCharacteristic(hap.Characteristic.TargetTemperature)
+    this.thermostatService.getCharacteristic(hap.Characteristic.TargetTemperature)
       .onGet(this.getTargetTemperature.bind(this))
       .onSet(this.setTargetTemperatur.bind(this))
       .setProps({
@@ -88,30 +103,28 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
         maxValue: MAX_TEMPERATURE,
         minStep: 1,
       });
-
     // temperature units
-    this.temperaturService.getCharacteristic(hap.Characteristic.TemperatureDisplayUnits)
+    this.thermostatService.getCharacteristic(hap.Characteristic.TemperatureDisplayUnits)
       .on(CharacteristicEventTypes.GET, (callback: CharacteristicGetCallback) => {
         log.info('Getting sauna temperature units in Celsium (cannot be changed)');
         callback(undefined, hap.Characteristic.TemperatureDisplayUnits.CELSIUS);
       });
-
-    this.temperaturService.getCharacteristic(hap.Characteristic.CurrentHeatingCoolingState)
+    // cooling/heating state
+    this.thermostatService.getCharacteristic(hap.Characteristic.CurrentHeatingCoolingState)
       .onGet(this.getCurrentState.bind(this));
-
-    this.temperaturService.getCharacteristic(hap.Characteristic.TargetHeatingCoolingState)
+    // target cooling/heating state
+    this.thermostatService.getCharacteristic(hap.Characteristic.TargetHeatingCoolingState)
       .onGet(this.getTargetState.bind(this))
       .onSet(this.setTargetState.bind(this));
-
-    this.temperaturService.setCharacteristic(hap.Characteristic.Name, config.name);
-
+    
     this.informationService = new hap.Service.AccessoryInformation()
       .setCharacteristic(hap.Characteristic.Manufacturer, 'Sentiotec')
       .setCharacteristic(hap.Characteristic.Model, 'Pronet')
       .setCharacteristic(hap.Characteristic.Name, config.name)
       .setCharacteristic(hap.Characteristic.SerialNumber, config.serial)
       .setCharacteristic(hap.Characteristic.ProductData, 'Sauna heater with Pronet Web interface');
-    this.informationService.getCharacteristic(hap.Characteristic.FirmwareRevision)
+    // Firmware
+      this.informationService.getCharacteristic(hap.Characteristic.FirmwareRevision)
       .onGet(this.getFirmwareVersion.bind(this));
 
     log.info('Sauna finished initializing');
@@ -159,7 +172,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
           return parseInt(value);
         }
       },
-      this.temperaturService.getCharacteristic(hap.Characteristic.CurrentTemperature),
+      this.thermostatService.getCharacteristic(hap.Characteristic.CurrentTemperature),
     );
   }
 
@@ -176,7 +189,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
           return parseInt(value);
         }
       },
-      this.temperaturService.getCharacteristic(hap.Characteristic.TargetTemperature),
+      this.thermostatService.getCharacteristic(hap.Characteristic.TargetTemperature),
     );
   }
 
@@ -205,7 +218,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
     return this.getCharacteristic(this.sentioAPI.ACTIVE,
       (value: string | null) => {
         if (value === null) {
-          return hap.Characteristic.TargetHeatingCoolingState.AUTO;
+          return hap.Characteristic.TargetHeatingCoolingState.OFF;
         }
         if (parseInt(value) === 1) {
           return hap.Characteristic.TargetHeatingCoolingState.HEAT;
@@ -213,7 +226,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
           return hap.Characteristic.TargetHeatingCoolingState.OFF;
         }
       },
-      this.temperaturService.getCharacteristic(hap.Characteristic.TargetHeatingCoolingState),
+      this.thermostatService.getCharacteristic(hap.Characteristic.TargetHeatingCoolingState),
     );
   }
 
@@ -227,11 +240,11 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
       (value: string | null) => {
         if (value === null) {
           // a valid value has been received
-          this.temperaturService.setHiddenService(true);
+          this.thermostatService.setHiddenService(true);
           return hap.Characteristic.CurrentHeatingCoolingState.OFF;
         } else {
           // a valid value has been received
-          this.temperaturService.setHiddenService(false);
+          this.thermostatService.setHiddenService(false);
         }
         if (parseInt(value) === 1) {
           return hap.Characteristic.CurrentHeatingCoolingState.HEAT;
@@ -239,7 +252,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
           return hap.Characteristic.CurrentHeatingCoolingState.OFF;
         }
       },
-      this.temperaturService.getCharacteristic(hap.Characteristic.CurrentHeatingCoolingState),
+      this.thermostatService.getCharacteristic(hap.Characteristic.CurrentHeatingCoolingState),
     );
   }
 
@@ -273,7 +286,8 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
   getServices(): Service[] {
     return [
       this.informationService,
-      this.temperaturService,
+      this.temperatureService,
+      this.thermostatService,
     ];
   }
 
