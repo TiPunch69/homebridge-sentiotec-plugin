@@ -101,7 +101,6 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
     this.thermostatService.getCharacteristic(hap.Characteristic.TargetHeatingCoolingState)
       .onGet(this.getTargetState.bind(this))
       .onSet(this.setTargetState.bind(this));
-    
     this.informationService = new hap.Service.AccessoryInformation()
       .setCharacteristic(hap.Characteristic.Manufacturer, 'Sentiotec')
       .setCharacteristic(hap.Characteristic.Model, 'Pronet')
@@ -109,7 +108,7 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
       .setCharacteristic(hap.Characteristic.SerialNumber, config.serial)
       .setCharacteristic(hap.Characteristic.ProductData, 'Sauna heater with Pronet Web interface');
     // Firmware
-      this.informationService.getCharacteristic(hap.Characteristic.FirmwareRevision)
+    this.informationService.getCharacteristic(hap.Characteristic.FirmwareRevision)
       .onGet(this.getFirmwareVersion.bind(this));
 
     log.info('Sauna finished initializing');
@@ -142,13 +141,11 @@ class SentiotecSaunaAccessory implements AccessoryPlugin {
           // a real error object
           this.log.error('Update characteristic "' + saunaCharacteristic.name + '" failed: ' + error.message);
           characteristic.updateValue(error);
-        }
-        else {
+        } else {
           // just a message
           this.log.error('Update characteristic "' + saunaCharacteristic.name + '" failed: ' + error);
           characteristic.updateValue(new Error(error));
         }
-        
       });
     return converterFunction(null);
   }
